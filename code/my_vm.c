@@ -2,6 +2,7 @@
 
 /*
 Function responsible for allocating and setting your physical memory 
+@Author - Advith
 */
 void set_physical_mem() {
 
@@ -67,6 +68,7 @@ print_TLB_missrate()
 /*
 The function takes a virtual address and page directories starting address and
 performs translation to return the physical address
+@Author - Taj
 */
 pte_t *translate(pde_t *pgdir, void *va) {
     /* Part 1 HINT: Get the Page directory index (1st level) Then get the
@@ -88,6 +90,7 @@ The function takes a page directory address, virtual address, physical address
 as an argument, and sets a page table entry. This function will walk the page
 directory to see if there is an existing mapping for a virtual address. If the
 virtual address is not present, then a new entry will be added
+@Author - Taj
 */
 int
 page_map(pde_t *pgdir, void *va, void *pa)
@@ -102,6 +105,7 @@ page_map(pde_t *pgdir, void *va, void *pa)
 
 
 /*Function that gets the next available page
+@Author - Taj
 */
 void *get_next_avail(int num_pages) {
  
@@ -111,6 +115,7 @@ void *get_next_avail(int num_pages) {
 
 /* Function responsible for allocating pages
 and used by the benchmark
+@Author - Advith
 */
 void *t_malloc(unsigned int num_bytes) {
 
@@ -129,6 +134,7 @@ void *t_malloc(unsigned int num_bytes) {
 }
 
 /* Responsible for releasing one or more memory pages using virtual address (va)
+@Author - Advith
 */
 void t_free(void *va, int size) {
 
@@ -145,6 +151,7 @@ void t_free(void *va, int size) {
 /* The function copies data pointed by "val" to physical
  * memory pages using virtual address (va)
  * The function returns 0 if the put is successfull and -1 otherwise.
+ * @Author - Taj
 */
 int put_value(void *va, void *val, int size) {
 
@@ -160,7 +167,8 @@ int put_value(void *va, void *val, int size) {
 }
 
 
-/*Given a virtual address, this function copies the contents of the page to val*/
+/*Given a virtual address, this function copies the contents of the page to val
+@Author - Taj*/
 void get_value(void *va, void *val, int size) {
 
     /* HINT: put the values pointed to by "va" inside the physical memory at given
@@ -176,6 +184,7 @@ void get_value(void *va, void *val, int size) {
 This function receives two matrices mat1 and mat2 as an argument with size
 argument representing the number of rows and columns. After performing matrix
 multiplication, copy the result to answer.
+@Author - Taj
 */
 void mat_mult(void *mat1, void *mat2, int size, void *answer) {
 
