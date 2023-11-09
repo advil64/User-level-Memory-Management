@@ -14,6 +14,9 @@ int *physical_bitmap;
 int *virtual_bitmap;
 char *physical_memory;
 
+// Global variables to store info about page tables
+int num_page_tables;
+
 /*
 Function responsible for allocating and setting your physical memory
 @Author - Advith
@@ -130,12 +133,34 @@ int page_map(pde_t *pgdir, void *va, void *pa)
 }
 
 /*Function that gets the next available page
-@Author - Taj
+@Author - Advith
 */
 void *get_next_avail(int num_pages)
 {
-
+    bool is_contiguous = true;
     // Use virtual address bitmap to find the next free page
+    for (int i = 0; i < VIRTUAL_BITMAP_SIZE; i++)
+    {
+        for (int j = i; j < num_pages; j++)
+        {
+            if (virtual_bitmap[j] != 0)
+            {
+                is_contiguous = false;
+            }
+        }
+        if (is_contiguous)
+        {
+            for (int j = i; j < num_pages; j++)
+            {
+                if (virtual_bitmap[j] != 0)
+                {
+                    is_contiguous = false;
+                }
+            }
+            return (void *)i;
+        }
+    }
+    return NULL;
 }
 
 /* Function responsible for allocating pages
@@ -155,25 +180,29 @@ void *t_malloc(unsigned int num_bytes)
 
     /*
      * HINT: If the page directory is not initialized, then initialize the
-     * page directory. Next, using get_next_avail(), check if there are free pages. If
-     * free pages are available, set the bitmaps and map a new page. Note, you will
-     * have to mark which physical pages are used.
+     * page directory.
      */
-    int num_page_tables = pow(2, (log2(MAX_MEMSIZE) - log2(PGSIZE)));
-    int page_directory_offset = num_page_tables/PAGE_DIRECTORY_SIZE;
+    num_page_tables = pow(2, (log2(MAX_MEMSIZE) - log2(PGSIZE)));
 
     if (virtual_bitmap[0] == 0)
     {
-        // Page directory has not been initialized
+        // Page directory has not been initialized loop through physical memory and set table addresses
         for (int i = 0; i < PAGE_DIRECTORY_SIZE; i++)
         {
-            virtual_bitmap[i] = 1;
+            physical_bitmap[i] = 1;
         }
-        // Loop through physical memory and set table addresses
-        for (int i = 0; i < PAGE_DIRECTORY_SIZE; i++)
-        {
-            physical_memory[i] = (pde_t)(i + page_directory_offset);
-        }
+    }
+
+    /* Next, using get_next_avail(), check if there are free pages. If
+     * free pages are available, set the bitmaps and map a new page. Note, you will
+     * have to mark which physical pages are used.
+     */
+    int pages_needed = num_bytes / PGSIZE;
+    void *virtual_address = get_next_avail(pages_needed);
+    if (virtual_address == NULL)
+    {
+        perror("Ran out of memory");
+        exit(1);
     }
 
     return NULL;
