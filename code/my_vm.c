@@ -8,6 +8,7 @@ void set_physical_mem() {
 
     //Allocate physical memory using mmap or malloc; this is the total size of
     //your memory you are simulating
+    int off_bits = 
     
     
     //HINT: Also calculate the number of physical and virtual pages and allocate
