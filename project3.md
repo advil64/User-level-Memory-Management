@@ -60,7 +60,7 @@ will allocate 2 pages when the page size is set as 4KB.
 If the user allocates a memory size that is larger than one-page size (e.g.,
 8KB bytes for 4KB page size), the multiple pages you allocate can be either
 physically contiguous or non-contiguous in the physical memory depending on the
-availability.  
+availability.
 
 Note that this approach would cause internal fragmentation. For example, to
 allocate 1 byte of memory, we must allocate at least 1 page. For simplicity,
