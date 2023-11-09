@@ -10,9 +10,9 @@
                 "-o",
                 "test",
                 "test.c",
-                "thread-worker.c",
-                "-lm",
-                "-pthread"
+                "-L../",
+                "-lmy_vm",
+                "-m32",
             ],
             "options": {
                 "cwd": "${fileDirname}"

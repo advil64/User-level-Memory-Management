@@ -6,10 +6,10 @@
     "configurations": [
         
         {
-            "name": "(gdb) Launch",
+            "name": "Launch Test",
             "type": "cppdbg",
             "request": "launch",
-            "program": "/common/home/ac1771/Desktop/Operating Systems/Project_2/code/benchmarks/parallel_cal",
+            "program": "/common/home/ac1771/Desktop/os_project_3/code/benchmark/test",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",

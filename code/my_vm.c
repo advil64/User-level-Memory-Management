@@ -157,7 +157,7 @@ void *get_next_avail(int num_pages)
                     is_contiguous = false;
                 }
             }
-            return (void *)i;
+            return (void *)(i+1); // first one is the pointer to the page directory
         }
     }
     return NULL;
@@ -197,13 +197,16 @@ void *t_malloc(unsigned int num_bytes)
      * free pages are available, set the bitmaps and map a new page. Note, you will
      * have to mark which physical pages are used.
      */
-    int pages_needed = num_bytes / PGSIZE;
+    int pages_needed = (num_bytes / PGSIZE) + 1;
     void *virtual_address = get_next_avail(pages_needed);
     if (virtual_address == NULL)
     {
         perror("Ran out of memory");
         exit(1);
     }
+
+    // TODO Need to now translate this to extract the page directory num and table num, then get the offset and mark the physical pages in the bitmap
+    // First right shift the address the correct number of bits then do more shifting stuff to get the indices
 
     return NULL;
 }

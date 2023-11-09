@@ -35,7 +35,7 @@ typedef struct TLB {
 
 } tlb;
 
-struct TLBEntry {
+typedef struct TLBEntry {
     unsigned int virtual_page;
     unsigned int physical_page;
     bool valid;
