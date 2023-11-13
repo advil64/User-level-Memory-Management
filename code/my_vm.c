@@ -104,10 +104,6 @@ void print_TLB_missrate()
     fprintf(stderr, "TLB miss rate %lf \n", miss_rate);
 }
 
-
-
-
-
 /*
 The function takes a virtual address and page directories starting address and
 performs translation to return the physical address
@@ -118,53 +114,65 @@ pte_t *translate(pde_t *pgdir, void *va)
     /* Part 1 HINT: Get the Page directory index (1st level) Then get the
      * 2nd-level-page table index using the virtual address.  Using the page
      * directory index and page table index get the physical address.
+     *
+     * Part 2 HINT: Check the TLB before performing the translation. If
+     * translation exists, then you can return physical address from the TLB.
      */
 
-    /* // Part 2 HINT: Check the TLB before performing the translation. If
-    // translation exists, then you can return physical address from the TLB.
-    // TODO
-    if (check_in_tlb(va)) 
-    {
+    //step 1. Check the TLB First...
+    //needs to be implemented in part 2 of the project first
+    /* NOTE: Work on TLB condition with addvith afterwards*/
+
+    //if (check_in_tlb(va)) 
+    //{
         // TLB hit: return the physical page from the TLB
-       return (pte_t*)get_from_tlb(va);
-    }
-    */
+      //  return (pte_t*)get_from_tlb(va);
+    //}
+    //else 
+    //{
+        // TLB miss: Perform the translation
 
-    // Extract virtual page number
-    // The virtual page number = virtual address / page
-    unsigned int virtual_page = (unsigned int)va / PGSIZE;
+        // Extract virtual page number
+        //The virtual page number = virtual address / page
+        unsigned int virtual_page = (unsigned int)va / PGSIZE;
 
-    // Calculate page directory index (1st level)
-    unsigned int pd_index = virtual_page / PAGE_TABLE_SIZE;
+        // Calculate page directory index (1st level)
+        unsigned int pd_index = virtual_page / PAGE_TABLE_SIZE;
 
-    // Calculate page table index (2nd level)
-    //  calculated by taking the remainder of (virtual page number / number of entries)
-    unsigned int pt_index = virtual_page % PAGE_TABLE_SIZE;
+        // Calculate page table index (2nd level)
+        //  calculated by taking the remainder of (virtual page number / number of entries)
+        unsigned int pt_index = virtual_page % PAGE_TABLE_SIZE;
 
-    // Check if the page directory entry is valid
-    if (pgdir[pd_index] == 0) 
-    {
-        return NULL;  // fail if not valid
-    }
+        // Check if the page directory entry is valid
+        if (pgdir[pd_index] == 0) 
+        {
+            return NULL;  // fail if not valid
+        }
 
-    // Access the page table
-    pte_t *page_table = (pte_t*)pgdir[pd_index];
+        // Access the page table
+        pte_t *page_table = (pte_t*)pgdir[pd_index];
 
-    // Check if the page table entry is valid
-    if (page_table[pt_index] == 0) {
-        return NULL;  // Invalid translation
-    }
+        // Check if the page table entry is valid
+        if (page_table[pt_index] == 0) {
+            return NULL;  // Invalid translation
+        }
 
-    // Translate the virtual address to the physical address
-    unsigned int physical_page = page_table[pt_index];
-    unsigned int offset = (unsigned int)va % PGSIZE;
-    unsigned int physical_address = (physical_page * PGSIZE) + offset;
+        // Translate the virtual address to the physical address
+        unsigned int physical_page = page_table[pt_index];
+        unsigned int offset = (unsigned int)va % PGSIZE;
+        unsigned int physical_address = (physical_page * PGSIZE) + offset;
 
-    // Update TLB with the translation
-    // put_in_tlb(va, (void*)physical_address);
+        // Update TLB with the translation
+        put_in_tlb(va, (void*)physical_address);
 
-    // Return the physical address
-    return (pte_t*)physical_address;
+        // Return the physical address
+        return (pte_t*)physical_address;
+   // }
+
+    
+
+
+    //
 
     // If translation not successful, then return NULL
     //return NULL;
@@ -312,7 +320,7 @@ int put_value(void *va, void *val, int size)
         unsigned int pt_index = virtual_page % PAGE_TABLE_SIZE;
 
         // Use translate() to find the physical page corresponding to the virtual address
-        pte_t *page_table = translate(NULL, va + (i * PGSIZE));
+        pte_t *page_table = translate(page_directory, va + (i * PGSIZE));
         
         // Check if the translation was successful
         if (page_table == NULL) 
