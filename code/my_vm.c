@@ -96,6 +96,10 @@ void print_TLB_missrate()
     fprintf(stderr, "TLB miss rate %lf \n", miss_rate);
 }
 
+
+
+
+
 /*
 The function takes a virtual address and page directories starting address and
 performs translation to return the physical address
@@ -111,8 +115,63 @@ pte_t *translate(pde_t *pgdir, void *va)
      * translation exists, then you can return physical address from the TLB.
      */
 
+    //step 1. Check the TLB First...
+    //needs to be implemented in part 2 of the project first
+    /* NOTE: Work on TLB condition with addvith afterwards*/
+
+    //if (check_in_tlb(va)) 
+    //{
+        // TLB hit: return the physical page from the TLB
+      //  return (pte_t*)get_from_tlb(va);
+    //}
+    //else 
+    //{
+        // TLB miss: Perform the translation
+
+        // Extract virtual page number
+        //The virtual page number = virtual address / page
+        unsigned int virtual_page = (unsigned int)va / PGSIZE;
+
+        // Calculate page directory index (1st level)
+        unsigned int pd_index = virtual_page / PAGE_TABLE_SIZE;
+
+        // Calculate page table index (2nd level)
+        //  calculated by taking the remainder of (virtual page number / number of entries)
+        unsigned int pt_index = virtual_page % PAGE_TABLE_SIZE;
+
+        // Check if the page directory entry is valid
+        if (pgdir[pd_index] == 0) 
+        {
+            return NULL;  // fail if not valid
+        }
+
+        // Access the page table
+        pte_t *page_table = (pte_t*)pgdir[pd_index];
+
+        // Check if the page table entry is valid
+        if (page_table[pt_index] == 0) {
+            return NULL;  // Invalid translation
+        }
+
+        // Translate the virtual address to the physical address
+        unsigned int physical_page = page_table[pt_index];
+        unsigned int offset = (unsigned int)va % PGSIZE;
+        unsigned int physical_address = (physical_page * PGSIZE) + offset;
+
+        // Update TLB with the translation
+        put_in_tlb(va, (void*)physical_address);
+
+        // Return the physical address
+        return (pte_t*)physical_address;
+   // }
+
+    
+
+
+    //
+
     // If translation not successful, then return NULL
-    return NULL;
+    //return NULL;
 }
 
 /*
@@ -239,6 +298,49 @@ int put_value(void *va, void *val, int size)
      * function.
      */
 
+    // Check if the virtual address is valid
+    if (va == NULL) 
+    {
+        return -1;  // Invalid virtual address
+    }
+
+    // Calculate the number of pages needed to store the data
+    int num_pages = (size / PGSIZE) + ((size % PGSIZE) != 0);
+
+    // Loop through each page
+    for (int i = 0; i < num_pages; i++) 
+    {
+        // Calculate indices for the two-level page table
+        unsigned int virtual_page = (unsigned int)(va + (i * PGSIZE)) / PGSIZE;
+        unsigned int pd_index = virtual_page / PAGE_TABLE_SIZE;
+        unsigned int pt_index = virtual_page % PAGE_TABLE_SIZE;
+
+        // Use translate() to find the physical page corresponding to the virtual address
+        pte_t *page_table = translate(page_directory, va + (i * PGSIZE));
+        
+        // Check if the translation was successful
+        if (page_table == NULL) 
+        {
+            return -1;  // Translation failed
+        }
+
+        // Check if the page table entry is valid
+        if (page_table[pt_index] == 0) 
+        {
+            return -1;  // Invalid translation
+        }
+
+        // Calculate the physical address
+        unsigned int physical_page = page_table[pt_index];
+        unsigned int offset = (unsigned int)(va + (i * PGSIZE)) % PGSIZE;
+        unsigned int physical_address = (physical_page * PGSIZE) + offset;
+
+        // Copy data from the source buffer to the physical page
+        memcpy((void *)physical_address, val + (i * PGSIZE), PGSIZE);
+    }
+
+    return 0;  // Successful data copy
+
     /*return -1 if put_value failed and 0 if put is successfull*/
 }
 
@@ -268,6 +370,7 @@ void mat_mult(void *mat1, void *mat2, int size, void *answer)
      * store the result to the "answer array"
      */
     int x, y, val_size = sizeof(int);
+    /*
     int i, j, k;
     for (i = 0; i < size; i++)
     {
@@ -286,6 +389,37 @@ void mat_mult(void *mat1, void *mat2, int size, void *answer)
             }
             int address_c = (unsigned int)answer + ((i * size * sizeof(int))) + (j * sizeof(int));
             // printf("This is the c: %d, address: %x!\n", c, address_c);
+            put_value((void *)address_c, (void *)&c, sizeof(int));
+        }
+    }
+    */
+
+    int i, j, k;
+
+    for (i = 0; i < size; i++) 
+    {
+        for (j = 0; j < size; j++) 
+        {
+            unsigned int c = 0;
+
+            for (k = 0; k < size; k++) {
+                // Calculate addresses for elements in matrices mat1 and mat2
+                int address_a = (unsigned int)mat1 + ((i * size * sizeof(int))) + (k * sizeof(int));
+                int address_b = (unsigned int)mat2 + ((k * size * sizeof(int))) + (j * sizeof(int));
+
+                // Use get_value to retrieve values from matrices mat1 and mat2
+                unsigned int a, b;
+                get_value((void *)address_a, &a, sizeof(int));
+                get_value((void *)address_b, &b, sizeof(int));
+
+                // Perform matrix multiplication
+                c += (a * b);
+            }
+
+            // Calculate address for the corresponding element in the answer matrix
+            int address_c = (unsigned int)answer + ((i * size * sizeof(int))) + (j * sizeof(int));
+
+            // Store the result of multiplication in the answer matrix using put_value
             put_value((void *)address_c, (void *)&c, sizeof(int));
         }
     }

@@ -33,6 +33,9 @@ typedef struct TLB {
     * address translation.
     */
 
+    tlb_entry tlb_entries[TLB_ENTRIES];
+
+
 } tlb;
 
 typedef struct TLBEntry {
@@ -45,7 +48,7 @@ typedef struct TLBEntry {
 void set_physical_mem();
 pte_t* translate(pde_t *pgdir, void *va);
 int page_map(pde_t *pgdir, void *va, void* pa);
-bool check_in_tlb(void *va);
+bool check_in_tlb(void *va); // Think I need to be using this
 void put_in_tlb(void *va, void *pa);
 void *t_malloc(unsigned int num_bytes);
 void t_free(void *va, int size);
