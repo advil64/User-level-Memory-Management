@@ -7,15 +7,18 @@
 
 // Constants for page table/directory
 #define PAGE_TABLE_SIZE (PGSIZE / sizeof(pte_t)) // number of entries that fit on a page
-#define PAGE_DIRECTORY_SIZE (PAGE_TABLE_SIZE)    // sqrt of the total number of page tables
+#define NUM_PAGE_TABLES (pow(2, (log2(MAX_MEMSIZE) - log2(PGSIZE))))
+#define PAGE_DIRECTORY_SIZE (sqrt(NUM_PAGE_TABLES)) // sqrt of the total number of page tables
+
+// Global sizes
+int page_dir_off;
+int page_tbl_off;
+int page_off;
 
 // Global variables to store the physical and virtual pages and memory
 int *physical_bitmap;
 int *virtual_bitmap;
 char *physical_memory;
-
-// Global variables to store info about page tables
-int num_page_tables;
 
 /*
 Function responsible for allocating and setting your physical memory
@@ -56,6 +59,11 @@ void set_physical_mem()
     {
         virtual_bitmap[i] = 0; // Mark all virtual pages as unallocated
     }
+
+    // calculate offsets
+    page_dir_off = log2(PAGE_DIRECTORY_SIZE);
+    page_tbl_off = log2(PAGE_TABLE_SIZE);
+    page_off = log2(PGSIZE);
 }
 
 /*
@@ -96,6 +104,10 @@ void print_TLB_missrate()
     fprintf(stderr, "TLB miss rate %lf \n", miss_rate);
 }
 
+
+
+
+
 /*
 The function takes a virtual address and page directories starting address and
 performs translation to return the physical address
@@ -106,13 +118,56 @@ pte_t *translate(pde_t *pgdir, void *va)
     /* Part 1 HINT: Get the Page directory index (1st level) Then get the
      * 2nd-level-page table index using the virtual address.  Using the page
      * directory index and page table index get the physical address.
-     *
-     * Part 2 HINT: Check the TLB before performing the translation. If
-     * translation exists, then you can return physical address from the TLB.
      */
 
+    /* // Part 2 HINT: Check the TLB before performing the translation. If
+    // translation exists, then you can return physical address from the TLB.
+    // TODO
+    if (check_in_tlb(va)) 
+    {
+        // TLB hit: return the physical page from the TLB
+       return (pte_t*)get_from_tlb(va);
+    }
+    */
+
+    // Extract virtual page number
+    // The virtual page number = virtual address / page
+    unsigned int virtual_page = (unsigned int)va / PGSIZE;
+
+    // Calculate page directory index (1st level)
+    unsigned int pd_index = virtual_page / PAGE_TABLE_SIZE;
+
+    // Calculate page table index (2nd level)
+    //  calculated by taking the remainder of (virtual page number / number of entries)
+    unsigned int pt_index = virtual_page % PAGE_TABLE_SIZE;
+
+    // Check if the page directory entry is valid
+    if (pgdir[pd_index] == 0) 
+    {
+        return NULL;  // fail if not valid
+    }
+
+    // Access the page table
+    pte_t *page_table = (pte_t*)pgdir[pd_index];
+
+    // Check if the page table entry is valid
+    if (page_table[pt_index] == 0) {
+        return NULL;  // Invalid translation
+    }
+
+    // Translate the virtual address to the physical address
+    unsigned int physical_page = page_table[pt_index];
+    unsigned int offset = (unsigned int)va % PGSIZE;
+    unsigned int physical_address = (physical_page * PGSIZE) + offset;
+
+    // Update TLB with the translation
+    // put_in_tlb(va, (void*)physical_address);
+
+    // Return the physical address
+    return (pte_t*)physical_address;
+
     // If translation not successful, then return NULL
-    return NULL;
+    //return NULL;
 }
 
 /*
@@ -182,9 +237,8 @@ void *t_malloc(unsigned int num_bytes)
      * HINT: If the page directory is not initialized, then initialize the
      * page directory.
      */
-    num_page_tables = pow(2, (log2(MAX_MEMSIZE) - log2(PGSIZE)));
 
-    if (virtual_bitmap[0] == 0)
+    if (physical_bitmap[0] == 0)
     {
         // Page directory has not been initialized loop through physical memory and set table addresses
         for (int i = 0; i < PAGE_DIRECTORY_SIZE; i++)
@@ -205,8 +259,9 @@ void *t_malloc(unsigned int num_bytes)
         exit(1);
     }
 
-    // TODO Need to now translate this to extract the page directory num and table num, then get the offset and mark the physical pages in the bitmap
-    // First right shift the address the correct number of bits then do more shifting stuff to get the indices
+    // TODO use translate to get the respective offsets and then allocate the corresponding physical memory
+    // for the chosen page table and page
+    
 
     return NULL;
 }
@@ -239,6 +294,49 @@ int put_value(void *va, void *val, int size)
      * function.
      */
 
+    // Check if the virtual address is valid
+    if (va == NULL) 
+    {
+        return -1;  // Invalid virtual address
+    }
+
+    // Calculate the number of pages needed to store the data
+    int num_pages = (size / PGSIZE) + ((size % PGSIZE) != 0);
+
+    // Loop through each page
+    for (int i = 0; i < num_pages; i++) 
+    {
+        // Calculate indices for the two-level page table
+        unsigned int virtual_page = (unsigned int)(va + (i * PGSIZE)) / PGSIZE;
+        unsigned int pd_index = virtual_page / PAGE_TABLE_SIZE;
+        unsigned int pt_index = virtual_page % PAGE_TABLE_SIZE;
+
+        // Use translate() to find the physical page corresponding to the virtual address
+        pte_t *page_table = translate(NULL, va + (i * PGSIZE));
+        
+        // Check if the translation was successful
+        if (page_table == NULL) 
+        {
+            return -1;  // Translation failed
+        }
+
+        // Check if the page table entry is valid
+        if (page_table[pt_index] == 0) 
+        {
+            return -1;  // Invalid translation
+        }
+
+        // Calculate the physical address
+        unsigned int physical_page = page_table[pt_index];
+        unsigned int offset = (unsigned int)(va + (i * PGSIZE)) % PGSIZE;
+        unsigned int physical_address = (physical_page * PGSIZE) + offset;
+
+        // Copy data from the source buffer to the physical page
+        memcpy((void *)physical_address, val + (i * PGSIZE), PGSIZE);
+    }
+
+    return 0;  // Successful data copy
+
     /*return -1 if put_value failed and 0 if put is successfull*/
 }
 
@@ -268,6 +366,7 @@ void mat_mult(void *mat1, void *mat2, int size, void *answer)
      * store the result to the "answer array"
      */
     int x, y, val_size = sizeof(int);
+    /*
     int i, j, k;
     for (i = 0; i < size; i++)
     {
@@ -286,6 +385,37 @@ void mat_mult(void *mat1, void *mat2, int size, void *answer)
             }
             int address_c = (unsigned int)answer + ((i * size * sizeof(int))) + (j * sizeof(int));
             // printf("This is the c: %d, address: %x!\n", c, address_c);
+            put_value((void *)address_c, (void *)&c, sizeof(int));
+        }
+    }
+    */
+
+    int i, j, k;
+
+    for (i = 0; i < size; i++) 
+    {
+        for (j = 0; j < size; j++) 
+        {
+            unsigned int c = 0;
+
+            for (k = 0; k < size; k++) {
+                // Calculate addresses for elements in matrices mat1 and mat2
+                int address_a = (unsigned int)mat1 + ((i * size * sizeof(int))) + (k * sizeof(int));
+                int address_b = (unsigned int)mat2 + ((k * size * sizeof(int))) + (j * sizeof(int));
+
+                // Use get_value to retrieve values from matrices mat1 and mat2
+                unsigned int a, b;
+                get_value((void *)address_a, &a, sizeof(int));
+                get_value((void *)address_b, &b, sizeof(int));
+
+                // Perform matrix multiplication
+                c += (a * b);
+            }
+
+            // Calculate address for the corresponding element in the answer matrix
+            int address_c = (unsigned int)answer + ((i * size * sizeof(int))) + (j * sizeof(int));
+
+            // Store the result of multiplication in the answer matrix using put_value
             put_value((void *)address_c, (void *)&c, sizeof(int));
         }
     }
