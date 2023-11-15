@@ -327,43 +327,19 @@ int put_value(void *va, void *val, int size)
     }
 
     // Calculate the number of pages needed to store the data
-    int num_pages = (size / PGSIZE) + ((size % PGSIZE) != 0);
+    int pages_needed = (size / PGSIZE) + 1;
 
     // Loop through each page
-    for (int i = 0; i < num_pages; i++)
+    for (int i = 0; i < pages_needed; i++)
     {
-        // Calculate indices for the two-level page table
-        unsigned int virtual_page = (unsigned int)(va + (i * PGSIZE)) / PGSIZE;
-        unsigned int pd_index = virtual_page / PAGE_TABLE_SIZE;
-        unsigned int pt_index = virtual_page % PAGE_TABLE_SIZE;
-
         // Use translate() to find the physical page corresponding to the virtual address
-        pte_t *page_table = translate(NULL, va + (i * PGSIZE));
-
-        // Check if the translation was successful
-        if (page_table == NULL)
-        {
-            return -1; // Translation failed
-        }
-
-        // Check if the page table entry is valid
-        if (page_table[pt_index] == 0)
-        {
-            return -1; // Invalid translation
-        }
-
-        // Calculate the physical address
-        unsigned int physical_page = page_table[pt_index];
-        unsigned int offset = (unsigned int)(va + (i * PGSIZE)) % PGSIZE;
-        unsigned int physical_address = (physical_page * PGSIZE) + offset;
+        pte_t *pt_index = translate(directory_start, va+i);
 
         // Copy data from the source buffer to the physical page
-        memcpy((void *)physical_address, val + (i * PGSIZE), PGSIZE);
+        memcpy((char *)physical_memory[*pt_index], val, PGSIZE);
     }
 
     return 0; // Successful data copy
-
-    /*return -1 if put_value failed and 0 if put is successfull*/
 }
 
 /*Given a virtual address, this function copies the contents of the page to val
