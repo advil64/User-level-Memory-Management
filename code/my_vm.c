@@ -136,7 +136,7 @@ pte_t *translate(pde_t *pgdir, void *va)
         // put_in_tlb(va, (void*)physical_address);
 
         // Return the physical address
-        return (pte_t*)physical_address;
+        // return (pte_t*)physical_address;
    // }
 
     
@@ -206,7 +206,10 @@ long get_next_page()
             return i;
         }
     }
-    return NULL; // ran out of physical space
+
+    perror("Ran out of physical memory");
+    // TODO clean up allocated memory
+    exit(1);
 }
 
 /* Function responsible for allocating pages
