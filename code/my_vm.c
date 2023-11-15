@@ -257,10 +257,12 @@ void *t_malloc(unsigned int num_bytes)
     }
 
     for (int i = 0; i < pages_needed; i++){
-        int *curr_add = (int *)(virtual_address+1);
+        long curr_add = (long)(virtual_address)+i;
         // Allocate the corresponding physical memory to the virtual memory
-        int directory_entry = *curr_add >> page_tbl_off;
-        int table_entry = *curr_add << page_dir_off;
+        int directory_entry = curr_add >> page_tbl_off;
+
+        int mask = (1 << 10) - 1;
+        int table_entry = curr_add & mask;
 
         // page directory has not been set yet
         if (physical_memory[directory_start + directory_entry] == -1) {
@@ -279,12 +281,17 @@ void *t_malloc(unsigned int num_bytes)
             pte_t val_idx = get_next_page();
             physical_bitmap[val_idx] = 1;
             physical_memory[pg_tbl*PGSIZE + table_entry] = val_idx;
+
+            // set all the page values to -1
+            for (int i = 0; i < PGSIZE; i++){
+                physical_memory[page_idx*PGSIZE + i] = -1;
+            }
         }
     }
 
     
 
-    return NULL;
+    return virtual_address;
 }
 
 /* Responsible for releasing one or more memory pages using virtual address (va)
