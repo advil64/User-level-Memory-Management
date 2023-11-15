@@ -1,19 +1,18 @@
 #include <math.h>
 #include "my_vm.h"
 
-// Constants for the number of pages and page frames
+// memory is page-addressed
 #define PHYSICAL_BITMAP_SIZE (MEMSIZE / PGSIZE)
 #define VIRTUAL_BITMAP_SIZE (MAX_MEMSIZE / PGSIZE)
 
 // Constants for page table/directory
 #define PAGE_TABLE_SIZE (PGSIZE / sizeof(pte_t)) // number of entries that fit on a page
-#define NUM_PAGE_TABLES (pow(2, (log2(MAX_MEMSIZE) - log2(PGSIZE))))
-#define PAGE_DIRECTORY_SIZE (sqrt(NUM_PAGE_TABLES)) // sqrt of the total number of page tables
+#define PAGE_DIRECTORY_SIZE (pow(2, (log2(MAX_MEMSIZE) - log2(PGSIZE)))) // Page directory has an address for each table
 
 // Global sizes
 int page_dir_off;
 int page_tbl_off;
-int page_off;
+pde_t directory_start;
 
 // Global variables to store the physical and virtual pages and memory
 int *physical_bitmap;
@@ -63,45 +62,6 @@ void set_physical_mem()
     // calculate offsets
     page_dir_off = log2(PAGE_DIRECTORY_SIZE);
     page_tbl_off = log2(PAGE_TABLE_SIZE);
-    page_off = log2(PGSIZE);
-}
-
-/*
- * Part 2: Add a virtual to physical page translation to the TLB.
- * Feel free to extend the function arguments or return type.
- */
-int add_TLB(void *va, void *pa)
-{
-
-    /*Part 2 HINT: Add a virtual to physical page translation to the TLB */
-
-    return -1;
-}
-
-/*
- * Part 2: Check TLB for a valid translation.
- * Returns the physical page address.
- * Feel free to extend this function and change the return type.
- */
-pte_t *check_TLB(void *va)
-{
-
-    /* Part 2: TLB lookup code here */
-
-    /*This function should return a pte_t pointer*/
-}
-
-/*
- * Part 2: Print TLB miss rate.
- * Feel free to extend the function arguments or return type.
- */
-void print_TLB_missrate()
-{
-    double miss_rate = 0;
-
-    /*Part 2 Code here to calculate and print the TLB miss rate*/
-
-    fprintf(stderr, "TLB miss rate %lf \n", miss_rate);
 }
 
 /*
@@ -119,9 +79,19 @@ pte_t *translate(pde_t *pgdir, void *va)
      * translation exists, then you can return physical address from the TLB.
      */
 
+    /*
+    
+       - 10 bytes page directory
+       - 10 bytes page table after
+
+       - get page directory offset
+       -
+    
+    */
+
     //step 1. Check the TLB First...
     //needs to be implemented in part 2 of the project first
-    /* NOTE: Work on TLB condition with addvith afterwards*/
+    /* NOTE: Work on TLB condition with advith afterwards*/
 
     //if (check_in_tlb(va)) 
     //{
@@ -132,16 +102,17 @@ pte_t *translate(pde_t *pgdir, void *va)
     //{
         // TLB miss: Perform the translation
 
-        // Extract virtual page number
-        //The virtual page number = virtual address / page
-        unsigned int virtual_page = (unsigned int)va / PGSIZE;
+        //int directory_entry = *(int *)virtual_address >> page_tbl_off;
+        //int table_entry = *(int *)virtual_address << page_dir_off;
 
-        // Calculate page directory index (1st level)
-        unsigned int pd_index = virtual_page / PAGE_TABLE_SIZE;
+        //Get the PD_index --> the top 10 bits (32 bit in base case but use pg_dir_off)
+        //unsigned int virtual_address = (unsigned int) va;
+        //unsigned int pd_mask = 0xFFC000000; // 32 bit case
+        
+        int pd_index = *(int *) va >> page_dir_off; 
 
-        // Calculate page table index (2nd level)
-        //  calculated by taking the remainder of (virtual page number / number of entries)
-        unsigned int pt_index = virtual_page % PAGE_TABLE_SIZE;
+        // get the pt index (2nd level)
+        int pt_index = *(int *) va >> page_tbl_off;
 
         // Check if the page directory entry is valid
         if (pgdir[pd_index] == 0) 
@@ -149,21 +120,20 @@ pte_t *translate(pde_t *pgdir, void *va)
             return NULL;  // fail if not valid
         }
 
-        // Access the page table
-        pte_t *page_table = (pte_t*)pgdir[pd_index];
+        
+        // get the page table
+        pte_t* page_table = (pte_t*) pgdir[pd_index];
 
-        // Check if the page table entry is valid
-        if (page_table[pt_index] == 0) {
-            return NULL;  // Invalid translation
-        }
 
-        // Translate the virtual address to the physical address
-        unsigned int physical_page = page_table[pt_index];
-        unsigned int offset = (unsigned int)va % PGSIZE;
-        unsigned int physical_address = (physical_page * PGSIZE) + offset;
+        //get the page frame
+        
+        
+
+        //
+        
 
         // Update TLB with the translation
-        put_in_tlb(va, (void*)physical_address);
+        // put_in_tlb(va, (void*)physical_address);
 
         // Return the physical address
         return (pte_t*)physical_address;
@@ -195,7 +165,7 @@ int page_map(pde_t *pgdir, void *va, void *pa)
     return -1;
 }
 
-/*Function that gets the next available page
+/*Function that gets the next available virtual address
 @Author - Advith
 */
 void *get_next_avail(int num_pages)
@@ -226,6 +196,19 @@ void *get_next_avail(int num_pages)
     return NULL;
 }
 
+/*Function that gets the next available physical
+@Author - Advith
+*/
+long get_next_page()
+{
+    for (pde_t i = 0; i < PHYSICAL_BITMAP_SIZE; i++){
+        if (physical_bitmap[i] == 0) {
+            return i;
+        }
+    }
+    return NULL; // ran out of physical space
+}
+
 /* Function responsible for allocating pages
 and used by the benchmark
 @Author - Advith
@@ -248,10 +231,13 @@ void *t_malloc(unsigned int num_bytes)
 
     if (physical_bitmap[0] == 0)
     {
-        // Page directory has not been initialized loop through physical memory and set table addresses
-        for (int i = 0; i < PAGE_DIRECTORY_SIZE; i++)
-        {
-            physical_bitmap[i] = 1;
+        // Page directory has not been initialized first page is for the directory
+        physical_bitmap[0] = 1;
+        directory_start = (pde_t)0; // page table starts at address 0 of the memory
+
+        // set all the directory values to -1
+        for (int i = 0; i < PGSIZE; i++){
+            physical_memory[directory_start + i] = -1;
         }
     }
 
@@ -267,8 +253,32 @@ void *t_malloc(unsigned int num_bytes)
         exit(1);
     }
 
-    // TODO use translate to get the respective offsets and then allocate the corresponding physical memory
-    // for the chosen page table and page
+    for (int i = 0; i < pages_needed; i++){
+        int *curr_add = (int *)(virtual_address+1);
+        // Allocate the corresponding physical memory to the virtual memory
+        int directory_entry = *curr_add >> page_tbl_off;
+        int table_entry = *curr_add << page_dir_off;
+
+        // page directory has not been set yet
+        if (physical_memory[directory_start + directory_entry] == -1) {
+            pde_t page_idx = get_next_page(); // for the page table
+            physical_bitmap[page_idx] = 1;
+            physical_memory[directory_start + directory_entry] = page_idx;
+
+            // set all the page values to -1
+            for (int i = 0; i < PGSIZE; i++){
+                physical_memory[page_idx*PGSIZE + i] = -1;
+            }
+        }
+        
+        pde_t pg_tbl = physical_memory[directory_start + directory_entry];
+        if (physical_memory[pg_tbl*PGSIZE + table_entry] == -1) {
+            pte_t val_idx = get_next_page();
+            physical_bitmap[val_idx] = 1;
+            physical_memory[pg_tbl*PGSIZE + table_entry] = val_idx;
+        }
+    }
+
     
 
     return NULL;
@@ -320,7 +330,7 @@ int put_value(void *va, void *val, int size)
         unsigned int pt_index = virtual_page % PAGE_TABLE_SIZE;
 
         // Use translate() to find the physical page corresponding to the virtual address
-        pte_t *page_table = translate(page_directory, va + (i * PGSIZE));
+        pte_t *page_table = translate(NULL, va + (i * PGSIZE));
         
         // Check if the translation was successful
         if (page_table == NULL) 
@@ -427,4 +437,42 @@ void mat_mult(void *mat1, void *mat2, int size, void *answer)
             put_value((void *)address_c, (void *)&c, sizeof(int));
         }
     }
+}
+
+/*
+ * Part 2: Add a virtual to physical page translation to the TLB.
+ * Feel free to extend the function arguments or return type.
+ */
+int add_TLB(void *va, void *pa)
+{
+
+    /*Part 2 HINT: Add a virtual to physical page translation to the TLB */
+
+    return -1;
+}
+
+/*
+ * Part 2: Check TLB for a valid translation.
+ * Returns the physical page address.
+ * Feel free to extend this function and change the return type.
+ */
+pte_t *check_TLB(void *va)
+{
+
+    /* Part 2: TLB lookup code here */
+
+    /*This function should return a pte_t pointer*/
+}
+
+/*
+ * Part 2: Print TLB miss rate.
+ * Feel free to extend the function arguments or return type.
+ */
+void print_TLB_missrate()
+{
+    double miss_rate = 0;
+
+    /*Part 2 Code here to calculate and print the TLB miss rate*/
+
+    fprintf(stderr, "TLB miss rate %lf \n", miss_rate);
 }
