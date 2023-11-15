@@ -67,77 +67,75 @@ void set_physical_mem()
 /*
 The function takes a virtual address and page directories starting address and
 performs translation to return the physical address
-@Author - Taj
+@Author - Advith
 */
-pte_t *translate(pde_t *pgdir, void *va)
+pte_t translate(pde_t pgdir, void *va)
 {
     /* Part 1 HINT: Get the Page directory index (1st level) Then get the
-     * 2nd-level-page table index using the virtual address.  Using the page
-     * directory index and page table index get the physical address.
-     *
-     * Part 2 HINT: Check the TLB before performing the translation. If
-     * translation exists, then you can return physical address from the TLB.
-     */
-
-    /*
-
-       - 10 bytes page directory
-       - 10 bytes page table after
-
-       - get page directory offset
-       -
-
+    * 2nd-level-page table index using the virtual address.  Using the page
+    * directory index and page table index get the physical address.
     */
+    long curr_add = (long)va;
+    int directory_entry = curr_add >> page_tbl_off;
 
-    // step 1. Check the TLB First...
-    // needs to be implemented in part 2 of the project first
-    /* NOTE: Work on TLB condition with advith afterwards*/
+    int mask = (1 << 10) - 1;
+    int table_entry = curr_add & mask;
 
-    // if (check_in_tlb(va))
-    //{
-    //  TLB hit: return the physical page from the TLB
-    //  return (pte_t*)get_from_tlb(va);
-    //}
-    // else
-    //{
-    // TLB miss: Perform the translation
-
-    // int directory_entry = *(int *)virtual_address >> page_tbl_off;
-    // int table_entry = *(int *)virtual_address << page_dir_off;
-
-    // Get the PD_index --> the top 10 bits (32 bit in base case but use pg_dir_off)
-    // unsigned int virtual_address = (unsigned int) va;
-    // unsigned int pd_mask = 0xFFC000000; // 32 bit case
-
-    int pd_index = *(int *)va >> page_dir_off;
-
-    // get the pt index (2nd level)
-    int pt_index = *(int *)va >> page_tbl_off;
-
-    // Check if the page directory entry is valid
-    if (pgdir[pd_index] == 0)
-    {
-        return NULL; // fail if not valid
+    // page directory has not been set yet
+    if (physical_memory[pgdir + directory_entry] == -1)
+    {   
+        // Accessing an invalid entry
+        return -1;
     }
 
-    // get the page table
-    pte_t *page_table = (pte_t *)pgdir[pd_index];
+    pde_t pg_tbl = physical_memory[pgdir + directory_entry];
 
-    // get the page frame
+    if (physical_memory[pg_tbl * PGSIZE + table_entry] == -1)
+    {
+        // Accessing an invalid entry
+        return -1;
+    }
 
-    //
+    // Part 2 HINT: Check the TLB before performing the translation. If
+    // translation exists, then you can return physical address from the TLB.
 
-    // Update TLB with the translation
-    // put_in_tlb(va, (void*)physical_address);
+    return (pte_t )(pg_tbl * PGSIZE + table_entry);
+}
 
-    // Return the physical address
-    // return (pte_t*)physical_address;
-    // }
+/* The function copies data pointed by "val" to physical
+ * memory pages using virtual address (va)
+ * The function returns 0 if the put is successfull and -1 otherwise.
+ * @Author - Advith
+ */
+int put_value(void *va, void *val, int size)
+{
 
-    //
+    /* HINT: Using the virtual address and translate(), find the physical page. Copy
+     * the contents of "val" to a physical page. NOTE: The "size" value can be larger
+     * than one page. Therefore, you may have to find multiple pages using translate()
+     * function.
+     */
 
-    // If translation not successful, then return NULL
-    // return NULL;
+    // Check if the virtual address is valid
+    if (va == NULL)
+    {
+        return -1; // Invalid virtual address
+    }
+
+    // Calculate the number of pages needed to store the data
+    int pages_needed = (size / PGSIZE) + 1;
+
+    // Loop through each page
+    for (int i = 0; i < pages_needed; i++)
+    {
+        // Use translate() to find the physical page corresponding to the virtual address
+        pte_t pt_index = translate(directory_start, va+i);
+
+        // Copy data from the source buffer to the physical page
+        memcpy(&physical_memory[pt_index], val, PGSIZE);
+    }
+
+    return 0; // Successful data copy
 }
 
 /*
@@ -306,50 +304,15 @@ void t_free(void *va, int size)
      */
 }
 
-/* The function copies data pointed by "val" to physical
- * memory pages using virtual address (va)
- * The function returns 0 if the put is successfull and -1 otherwise.
- * @Author - Taj
- */
-int put_value(void *va, void *val, int size)
-{
-
-    /* HINT: Using the virtual address and translate(), find the physical page. Copy
-     * the contents of "val" to a physical page. NOTE: The "size" value can be larger
-     * than one page. Therefore, you may have to find multiple pages using translate()
-     * function.
-     */
-
-    // Check if the virtual address is valid
-    if (va == NULL)
-    {
-        return -1; // Invalid virtual address
-    }
-
-    // Calculate the number of pages needed to store the data
-    int pages_needed = (size / PGSIZE) + 1;
-
-    // Loop through each page
-    for (int i = 0; i < pages_needed; i++)
-    {
-        // Use translate() to find the physical page corresponding to the virtual address
-        pte_t *pt_index = translate(directory_start, va+i);
-
-        // Copy data from the source buffer to the physical page
-        memcpy((char *)physical_memory[*pt_index], val, PGSIZE);
-    }
-
-    return 0; // Successful data copy
-}
-
 /*Given a virtual address, this function copies the contents of the page to val
-@Author - Taj*/
+@Author - Advith*/
 void get_value(void *va, void *val, int size)
 {
 
     /* HINT: put the values pointed to by "va" inside the physical memory at given
      * "val" address. Assume you can access "val" directly by derefencing them.
      */
+    
 }
 
 /*
