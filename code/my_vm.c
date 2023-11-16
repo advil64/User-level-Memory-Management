@@ -2,8 +2,8 @@
 #include "my_vm.h"
 
 // memory is page-addressed
-#define PHYSICAL_BITMAP_SIZE (MEMSIZE)
-#define VIRTUAL_BITMAP_SIZE (MAX_MEMSIZE)
+#define PHYSICAL_BITMAP_SIZE (MEMSIZE / PGSIZE)
+#define VIRTUAL_BITMAP_SIZE (MAX_MEMSIZE / PGSIZE)
 
 // Constants for page table/directory
 #define PAGE_TABLE_SIZE (PGSIZE / sizeof(pte_t))                         // number of entries that fit on a page
@@ -12,6 +12,7 @@
 // Global sizes
 int page_dir_off;
 int page_tbl_off;
+int page_off;
 pde_t directory_start;
 
 // Global variables to store the physical and virtual pages and memory
@@ -62,6 +63,7 @@ void set_physical_mem()
     // calculate offsets
     page_dir_off = log2(PAGE_DIRECTORY_SIZE);
     page_tbl_off = log2(PAGE_TABLE_SIZE);
+    page_off = log2(PGSIZE);
 }
 
 /*
@@ -71,37 +73,169 @@ performs translation to return the physical address
 @Author - Advith
 */
 pte_t translate(pde_t pgdir, void *va)
-pte_t translate(pde_t pgdir, void *va)
 {
     /* Part 1 HINT: Get the Page directory index (1st level) Then get the
      * 2nd-level-page table index using the virtual address.  Using the page
      * directory index and page table index get the physical address.
      */
+
     long curr_add = (long)va;
-    int directory_entry = curr_add >> page_tbl_off;
 
-    int mask = (1 << 10) - 1;
-    int table_entry = curr_add & mask;
-
-    // page directory has not been set yet
-    if (physical_memory[pgdir + directory_entry] == -1)
-    {
-        // Accessing an invalid entry
-        return -1;
-    }
+    pde_t directory_entry = (int)((curr_add >> (page_tbl_off+page_off)));
+    pte_t table_entry = (int)((curr_add >> page_off) & ((1 << page_tbl_off) - 1));
+    long page_entry = (int)(curr_add & ((1 << page_off) - 1));
 
     pde_t pg_tbl = physical_memory[pgdir + directory_entry];
 
-    if (physical_memory[pg_tbl * PGSIZE + table_entry] == -1)
+    // page directory has not been set yet
+    if (pg_tbl == -1)
     {
         // Accessing an invalid entry
         return -1;
     }
 
+    pte_t page = pg_tbl * PGSIZE + table_entry;
+
+    // page table has not been set yet
+    if (physical_memory[page] == -1)
+    {
+        // Accessing an invalid entry
+        return -1;
+    }
+
+    // return physical address
+    return physical_memory[page] * PGSIZE + page_entry;
+
     // Part 2 HINT: Check the TLB before performing the translation. If
     // translation exists, then you can return physical address from the TLB.
+}
 
-    return (pte_t)(pg_tbl * PGSIZE + table_entry);
+/*Function that gets the next available virtual address
+@Author - Advith
+*/
+long get_next_avail(int num_pages)
+{
+    bool is_contiguous = true;
+    // Use virtual address bitmap to find the next free page
+    for (long i = 1; i < VIRTUAL_BITMAP_SIZE; i++)
+    {
+        is_contiguous = true;
+        for (long j = i; j < num_pages+i; j++)
+        {
+            if (virtual_bitmap[j] != 0)
+            {
+                is_contiguous = false;
+            }
+        }
+        if (is_contiguous)
+        {
+            return i;
+        }
+    }
+    return -1; // no virtual memory
+}
+
+/*Function that gets the next available physical
+@Author - Advith
+*/
+long get_next_page()
+{
+    for (pde_t i = 0; i < PHYSICAL_BITMAP_SIZE; i++)
+    {
+        if (physical_bitmap[i] == 0)
+        {
+            return i;
+        }
+    }
+
+    perror("Ran out of physical memory");
+    // TODO clean up allocated memory
+    exit(1);
+}
+
+/* Function responsible for allocating pages
+and used by the benchmark
+@Author - Advith
+*/
+void *t_malloc(unsigned int num_bytes)
+{
+
+    /*
+     * HINT: If the physical memory is not yet initialized, then allocate and initialize.
+     */
+    if (physical_memory == NULL)
+    {
+        set_physical_mem();
+    }
+
+    /*
+     * HINT: If the page directory is not initialized, then initialize the
+     * page directory.
+     */
+
+    if (physical_bitmap[0] == 0)
+    {
+        // Page directory has not been initialized first page is for the directory
+        physical_bitmap[0] = 1;
+        directory_start = (pde_t)0; // page table starts at address 0 of the memory
+
+        // set all the directory values to -1
+        for (int i = 0; i < PGSIZE; i++)
+        {
+            physical_memory[directory_start + i] = -1;
+        }
+    }
+
+    /* Next, using get_next_avail(), check if there are free pages. If
+     * free pages are available, set the bitmaps and map a new page. Note, you will
+     * have to mark which physical pages are used.
+     */
+    int pages_needed = (num_bytes / PGSIZE) + 1;
+    long virtual_address = get_next_avail(pages_needed);
+    if (virtual_address == -1)
+    {
+        perror("Ran out of memory");
+        exit(1);
+    }
+
+    for (int i = 0; i < pages_needed; i++)
+    {
+        long curr_add = virtual_address + i; // next pages are just increments
+        virtual_bitmap[curr_add] = 1;
+
+        pde_t directory_entry = curr_add >> page_tbl_off;
+        pte_t table_entry = curr_add & ((1 << page_off) - 1);
+
+        // page directory has not been set yet
+        if (physical_memory[directory_start + directory_entry] == -1)
+        {
+            pde_t page_idx = get_next_page(); // for the page table
+            physical_bitmap[page_idx] = 1;
+            physical_memory[directory_start + directory_entry] = page_idx;
+
+            // set all the page values to -1
+            for (int i = 0; i < PGSIZE; i++)
+            {
+                physical_memory[page_idx * PGSIZE + i] = -1;
+            }
+        }
+
+        pte_t pg_tbl = physical_memory[directory_start + directory_entry];
+        if (physical_memory[pg_tbl * PGSIZE + table_entry] == -1)
+        {
+            pte_t val_idx = get_next_page();
+            physical_bitmap[val_idx] = 1;
+            physical_memory[pg_tbl * PGSIZE + table_entry] = val_idx; // TODO what happens when idx get's too big to fit in one byte of physical mem?
+
+            // set all the page values to -1
+            for (int i = 0; i < PGSIZE; i++)
+            {
+                physical_memory[val_idx * PGSIZE + i] = -1;
+            }
+        }
+    }
+
+    return (void *)(virtual_address << page_off);
 }
 
 /* The function copies data pointed by "val" to physical
@@ -205,136 +339,6 @@ int page_map(pde_t *pgdir, void *va, void *pa)
     return -1;
 }
 
-/*Function that gets the next available virtual address
-@Author - Advith
-*/
-void *get_next_avail(int num_pages)
-{
-    bool is_contiguous = true;
-    // Use virtual address bitmap to find the next free page
-    for (int i = 1; i < VIRTUAL_BITMAP_SIZE; i++)
-    {
-        is_contiguous = true;
-        for (int j = i; j < num_pages+i; j++)
-        {
-            if (virtual_bitmap[j] != 0)
-            {
-                is_contiguous = false;
-            }
-        }
-        if (is_contiguous)
-        {
-            return (void *)(i);
-        }
-    }
-    return NULL;
-}
-
-/*Function that gets the next available physical
-@Author - Advith
-*/
-long get_next_page()
-{
-    for (pde_t i = 0; i < PHYSICAL_BITMAP_SIZE; i++)
-    {
-        if (physical_bitmap[i] == 0)
-        {
-            return i;
-        }
-    }
-
-    perror("Ran out of physical memory");
-    // TODO clean up allocated memory
-    exit(1);
-}
-
-/* Function responsible for allocating pages
-and used by the benchmark
-@Author - Advith
-*/
-void *t_malloc(unsigned int num_bytes)
-{
-
-    /*
-     * HINT: If the physical memory is not yet initialized, then allocate and initialize.
-     */
-    if (physical_memory == NULL)
-    {
-        set_physical_mem();
-    }
-
-    /*
-     * HINT: If the page directory is not initialized, then initialize the
-     * page directory.
-     */
-
-    if (physical_bitmap[0] == 0)
-    {
-        // Page directory has not been initialized first page is for the directory
-        physical_bitmap[0] = 1;
-        directory_start = (pde_t)0; // page table starts at address 0 of the memory
-
-        // set all the directory values to -1
-        for (int i = 0; i < PGSIZE; i++)
-        {
-            physical_memory[directory_start + i] = -1;
-        }
-    }
-
-    /* Next, using get_next_avail(), check if there are free pages. If
-     * free pages are available, set the bitmaps and map a new page. Note, you will
-     * have to mark which physical pages are used.
-     */
-    int pages_needed = (num_bytes / PGSIZE) + 1;
-    void *virtual_address = get_next_avail(pages_needed);
-    if (virtual_address == NULL)
-    {
-        perror("Ran out of memory");
-        exit(1);
-    }
-
-    for (int i = 0; i < pages_needed; i++)
-    {
-        long curr_add = (long)(virtual_address) + i;
-        virtual_bitmap[curr_add] = 1;
-        // Allocate the corresponding physical memory to the virtual memory
-        int directory_entry = curr_add >> page_tbl_off;
-
-        int mask = (1 << 10) - 1;
-        int table_entry = curr_add & mask;
-
-        // page directory has not been set yet
-        if (physical_memory[directory_start + directory_entry] == -1)
-        {
-            pde_t page_idx = get_next_page(); // for the page table
-            physical_bitmap[page_idx] = 1;
-            physical_memory[directory_start + directory_entry] = page_idx;
-
-            // set all the page values to -1
-            for (int i = 0; i < PGSIZE; i++)
-            {
-                physical_memory[page_idx * PGSIZE + i] = -1;
-            }
-        }
-
-        pde_t pg_tbl = physical_memory[directory_start + directory_entry];
-        if (physical_memory[pg_tbl * PGSIZE + table_entry] == -1)
-        {
-            pte_t val_idx = get_next_page();
-            physical_bitmap[val_idx] = 1;
-            physical_memory[pg_tbl * PGSIZE + table_entry] = val_idx;
-
-            // set all the page values to -1
-            for (int i = 0; i < PGSIZE; i++)
-            {
-                physical_memory[val_idx * PGSIZE + i] = -1;
-            }
-        }
-    }
-
-    return virtual_address;
-}
-
 /* Responsible for releasing one or more memory pages using virtual address (va)
 @Author - Advith
 */
@@ -347,17 +351,6 @@ void t_free(void *va, int size)
      *
      * Part 2: Also, remove the translation from the TLB
      */
-}
-
-/*Given a virtual address, this function copies the contents of the page to val
-@Author - Advith*/
-void get_value(void *va, void *val, int size)
-{
-
-    /* HINT: put the values pointed to by "va" inside the physical memory at given
-     * "val" address. Assume you can access "val" directly by derefencing them.
-     */
-    
 }
 
 /*

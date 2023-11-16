@@ -50,25 +50,25 @@ int main() {
     mat_mult(a, b, SIZE, c);
 
 
-    // for (i = 0; i < SIZE; i++) {
-    //     for (j = 0; j < SIZE; j++) {
-    //         address_c = (unsigned int)c + ((i * SIZE * sizeof(int))) + (j * sizeof(int));
-    //         get_value((void *)address_c, &y, sizeof(int));
-    //         printf("%d ", y);
-    //     }
-    //     printf("\n");
-    // }
-    // printf("Freeing the allocations!\n");
-    // t_free(a, ARRAY_SIZE);
-    // t_free(b, ARRAY_SIZE);
-    // t_free(c, ARRAY_SIZE);
+    for (i = 0; i < SIZE; i++) {
+        for (j = 0; j < SIZE; j++) {
+            address_c = (unsigned int)c + ((i * SIZE * sizeof(int))) + (j * sizeof(int));
+            get_value((void *)address_c, &y, sizeof(int));
+            printf("%d ", y);
+        }
+        printf("\n");
+    }
+    printf("Freeing the allocations!\n");
+    t_free(a, ARRAY_SIZE);
+    t_free(b, ARRAY_SIZE);
+    t_free(c, ARRAY_SIZE);
 
-    // printf("Checking if allocations were freed!\n");
-    // a = t_malloc(ARRAY_SIZE);
-    // if ((int)a == old_a)
-    //     printf("free function works\n");
-    // else
-    //     printf("free function does not work\n");
+    printf("Checking if allocations were freed!\n");
+    a = t_malloc(ARRAY_SIZE);
+    if ((int)a == old_a)
+        printf("free function works\n");
+    else
+        printf("free function does not work\n");
 
     return 0;
 }
