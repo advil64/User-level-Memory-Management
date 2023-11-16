@@ -68,7 +68,9 @@ void set_physical_mem()
 The function takes a virtual address and page directories starting address and
 performs translation to return the physical address
 @Author - Advith
+@Author - Advith
 */
+pte_t translate(pde_t pgdir, void *va)
 pte_t translate(pde_t pgdir, void *va)
 {
     /* Part 1 HINT: Get the Page directory index (1st level) Then get the
@@ -345,6 +347,17 @@ void t_free(void *va, int size)
      *
      * Part 2: Also, remove the translation from the TLB
      */
+}
+
+/*Given a virtual address, this function copies the contents of the page to val
+@Author - Advith*/
+void get_value(void *va, void *val, int size)
+{
+
+    /* HINT: put the values pointed to by "va" inside the physical memory at given
+     * "val" address. Assume you can access "val" directly by derefencing them.
+     */
+    
 }
 
 /*
