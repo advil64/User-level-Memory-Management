@@ -2,7 +2,7 @@
 #include "my_vm.h"
 
 // memory is page-addressed
-#define PHYSICAL_BITMAP_SIZE (MEMSIZE / PGSIZE)
+#define PHYSICAL_BITMAP_SIZE (MEMSIZE)
 #define VIRTUAL_BITMAP_SIZE (MAX_MEMSIZE / PGSIZE)
 
 // Constants for page table/directory
@@ -29,7 +29,7 @@ void set_physical_mem()
 
     // Allocate physical memory using mmap or malloc; this is the total size of
     // your memory you are simulating
-    physical_memory = (char *)malloc(MEMSIZE);
+    physical_memory = (char *)malloc(sizeof(char) * MEMSIZE);
 
     if (physical_memory == NULL)
     {
@@ -53,6 +53,7 @@ void set_physical_mem()
     for (int i = 0; i < PHYSICAL_BITMAP_SIZE; i++)
     {
         physical_bitmap[i] = 0; // Mark all physical pages as unallocated
+        physical_memory[i] = -1;
     }
 
     for (int i = 0; i < VIRTUAL_BITMAP_SIZE; i++)
@@ -79,13 +80,14 @@ pte_t translate(pde_t pgdir, void *va)
      * directory index and page table index get the physical address.
      */
 
-    long curr_add = (long)va;
+    unsigned long curr_add = (unsigned long)va;
 
     pde_t directory_entry = (int)((curr_add >> (page_tbl_off+page_off)));
     pte_t table_entry = (int)((curr_add >> page_off) & ((1 << page_tbl_off) - 1));
     long page_entry = (int)(curr_add & ((1 << page_off) - 1));
 
-    pde_t pg_tbl = physical_memory[pgdir + directory_entry];
+    pde_t pg_tbl;
+    memcpy(&pg_tbl, &physical_memory[pgdir + directory_entry*sizeof(pde_t)], sizeof(pde_t));
 
     // page directory has not been set yet
     if (pg_tbl == -1)
@@ -94,17 +96,18 @@ pte_t translate(pde_t pgdir, void *va)
         return -1;
     }
 
-    pte_t page = pg_tbl * PGSIZE + table_entry;
+    pte_t page;
+    memcpy(&page, &physical_memory[pg_tbl + table_entry*sizeof(pte_t)], sizeof(pte_t));
 
     // page table has not been set yet
-    if (physical_memory[page] == -1)
+    if (page == -1)
     {
         // Accessing an invalid entry
         return -1;
     }
 
     // return physical address
-    return physical_memory[page] * PGSIZE + page_entry;
+    return page + page_entry;
 
     // Part 2 HINT: Check the TLB before performing the translation. If
     // translation exists, then you can return physical address from the TLB.
@@ -113,14 +116,14 @@ pte_t translate(pde_t pgdir, void *va)
 /*Function that gets the next available virtual address
 @Author - Advith
 */
-long get_next_avail(int num_pages)
+unsigned long get_next_avail(int num_pages)
 {
     bool is_contiguous = true;
     // Use virtual address bitmap to find the next free page
-    for (long i = 1; i < VIRTUAL_BITMAP_SIZE; i++)
+    for (unsigned long i = 1; i < VIRTUAL_BITMAP_SIZE; i++)
     {
         is_contiguous = true;
-        for (long j = i; j < num_pages+i; j++)
+        for (unsigned long j = i; j < num_pages+i; j++)
         {
             if (virtual_bitmap[j] != 0)
             {
@@ -140,7 +143,7 @@ long get_next_avail(int num_pages)
 */
 long get_next_page()
 {
-    for (pde_t i = 0; i < PHYSICAL_BITMAP_SIZE; i++)
+    for (pde_t i = 0; i < PHYSICAL_BITMAP_SIZE; i+=PGSIZE)
     {
         if (physical_bitmap[i] == 0)
         {
@@ -151,6 +154,51 @@ long get_next_page()
     perror("Ran out of physical memory");
     // TODO clean up allocated memory
     exit(1);
+}
+
+/*
+The function takes a page directory address, virtual address, physical address
+as an argument, and sets a page table entry. This function will walk the page
+directory to see if there is an existing mapping for a virtual address. If the
+virtual address is not present, then a new entry will be added
+*/
+int page_map(pde_t pgdir, unsigned long va, pte_t pa)
+{
+
+    /*HINT: Similar to translate(), find the page directory (1st level)
+    and page table (2nd-level) indices. If no mapping exists, set the
+    virtual to physical mapping */
+
+    pde_t directory_entry = va >> page_tbl_off;
+    pte_t table_entry = va & ((1 << page_off) - 1);
+
+    // page directory has not been set yet
+    if (physical_memory[directory_start + directory_entry*sizeof(pde_t)] == -1)
+    {
+        pde_t page_idx = get_next_page(); // for the page table
+        memcpy(&physical_memory[directory_start + directory_entry*sizeof(pde_t)], &page_idx, sizeof(pde_t));
+
+        // set all the page values to -1
+        for (int i = 0; i < PGSIZE; i++)
+        {
+            physical_memory[page_idx + i] = -1;
+            physical_bitmap[page_idx + i] = 1;
+        }
+    }
+
+    pte_t pg_tbl;
+    memcpy(&pg_tbl, &physical_memory[directory_start + directory_entry*sizeof(pde_t)], sizeof(pte_t));
+    if (physical_memory[pg_tbl + table_entry*sizeof(pte_t)] == -1)
+    {
+        memcpy(&physical_memory[pg_tbl + table_entry*sizeof(pte_t)], &pa, sizeof(pte_t));
+        // set all the page values to -1
+        for (int i = 0; i < PGSIZE; i++)
+        {
+            physical_memory[pa + i] = -1;
+        }
+    }
+
+    return 0;
 }
 
 /* Function responsible for allocating pages
@@ -191,7 +239,7 @@ void *t_malloc(unsigned int num_bytes)
      * have to mark which physical pages are used.
      */
     int pages_needed = (num_bytes / PGSIZE) + 1;
-    long virtual_address = get_next_avail(pages_needed);
+    unsigned long virtual_address = get_next_avail(pages_needed);
     if (virtual_address == -1)
     {
         perror("Ran out of memory");
@@ -200,39 +248,14 @@ void *t_malloc(unsigned int num_bytes)
 
     for (int i = 0; i < pages_needed; i++)
     {
-        long curr_add = virtual_address + i; // next pages are just increments
+        unsigned long curr_add = virtual_address + i; // next pages are just increments
         virtual_bitmap[curr_add] = 1;
 
-        pde_t directory_entry = curr_add >> page_tbl_off;
-        pte_t table_entry = curr_add & ((1 << page_off) - 1);
-
-        // page directory has not been set yet
-        if (physical_memory[directory_start + directory_entry] == -1)
-        {
-            pde_t page_idx = get_next_page(); // for the page table
-            physical_bitmap[page_idx] = 1;
-            physical_memory[directory_start + directory_entry] = page_idx;
-
-            // set all the page values to -1
-            for (int i = 0; i < PGSIZE; i++)
-            {
-                physical_memory[page_idx * PGSIZE + i] = -1;
-            }
-        }
-
-        pte_t pg_tbl = physical_memory[directory_start + directory_entry];
-        if (physical_memory[pg_tbl * PGSIZE + table_entry] == -1)
-        {
-            pte_t val_idx = get_next_page();
+        pte_t val_idx = get_next_page();
+        for (int i = 0; i < PGSIZE; i++){
             physical_bitmap[val_idx] = 1;
-            physical_memory[pg_tbl * PGSIZE + table_entry] = val_idx; // TODO what happens when idx get's too big to fit in one byte of physical mem?
-
-            // set all the page values to -1
-            for (int i = 0; i < PGSIZE; i++)
-            {
-                physical_memory[val_idx * PGSIZE + i] = -1;
-            }
         }
+        page_map(directory_start, curr_add, val_idx);
     }
 
     return (void *)(virtual_address << page_off);
@@ -266,6 +289,10 @@ int put_value(void *va, void *val, int size)
     {
         // Use translate() to find the physical page corresponding to the virtual address
         pte_t pt_index = translate(directory_start, va + i);
+        if(pt_index == -1){
+            perror("Invalid virtual address");
+            exit(1);
+        }
 
         // Copy data from the source buffer to the physical page
         if (size < PGSIZE)
@@ -298,7 +325,10 @@ void get_value(void *va, void *val, int size)
     {
         // Use translate() to find the physical page corresponding to the virtual address
         pte_t pt_index = translate(directory_start, va + i);
-        int temp = 0;
+        if(pt_index == -1){
+            perror("Invalid virtual address");
+            exit(1);
+        }
 
         // Copy data from the physical page to the source buffer
         if (size < PGSIZE)
@@ -313,32 +343,6 @@ void get_value(void *va, void *val, int size)
     }
 }
 
-/*
-The function takes a page directory address, virtual address, physical address
-as an argument, and sets a page table entry. This function will walk the page
-directory to see if there is an existing mapping for a virtual address. If the
-virtual address is not present, then a new entry will be added
-@Author - Taj
-*/
-int page_map(pde_t *pgdir, void *va, void *pa)
-{
-
-    /*HINT: Similar to translate(), find the page directory (1st level)
-    and page table (2nd-level) indices. If no mapping exists, set the
-    virtual to physical mapping */
-
-
-    // loop to walk the page directory:
-        // if address found
-            // return 1 since everything is set up
-
-    // Out of the loop means the page directory 
-
-    
-
-    return -1;
-}
-
 /* Responsible for releasing one or more memory pages using virtual address (va)
 @Author - Advith
 */
@@ -351,6 +355,19 @@ void t_free(void *va, int size)
      *
      * Part 2: Also, remove the translation from the TLB
      */
+    unsigned long curr_add = (unsigned long)va;
+
+    pde_t va_bitmap_add = (int)((curr_add >> page_off));
+
+    pte_t pa = translate(directory_start, va);
+
+    for (int i = 0; i < size; i++){
+        if(physical_bitmap[pa+1] != -1){
+            physical_bitmap[pa+1] = 0;
+            physical_memory[pa+1] = -1;
+        }
+    }
+    virtual_bitmap[va_bitmap_add] = 0;
 }
 
 /*
