@@ -19,6 +19,7 @@ pde_t directory_start;
 char *physical_bitmap;
 char *virtual_bitmap;
 char *physical_memory;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /*
 Function responsible for allocating and setting your physical memory
@@ -26,7 +27,6 @@ Function responsible for allocating and setting your physical memory
 */
 void set_physical_mem()
 {
-
     // Allocate physical memory using mmap or malloc; this is the total size of
     // your memory you are simulating
     physical_memory = (char *)malloc(sizeof(char) * MEMSIZE);
@@ -60,6 +60,7 @@ void set_physical_mem()
     {
         virtual_bitmap[i] = 0; // Mark all virtual pages as unallocated
     }
+    virtual_bitmap[0] = 1; //nothing in the first element
 
     // calculate offsets
     page_dir_off = log2(PAGE_DIRECTORY_SIZE);
@@ -70,7 +71,6 @@ void set_physical_mem()
 /*
 The function takes a virtual address and page directories starting address and
 performs translation to return the physical address
-@Author - Advith
 @Author - Advith
 */
 pte_t translate(pde_t pgdir, void *va)
@@ -135,7 +135,8 @@ unsigned long get_next_avail(int num_pages)
             return i;
         }
     }
-    return -1; // no virtual memory
+    perror("Ran out of memory");
+    exit(1);
 }
 
 /*Function that gets the next available physical
@@ -150,7 +151,6 @@ long get_next_page()
             return i;
         }
     }
-
     perror("Ran out of physical memory");
     // TODO clean up allocated memory
     exit(1);
@@ -164,15 +164,15 @@ virtual address is not present, then a new entry will be added
 */
 int page_map(pde_t pgdir, unsigned long va, pte_t pa)
 {
-
     /*HINT: Similar to translate(), find the page directory (1st level)
     and page table (2nd-level) indices. If no mapping exists, set the
     virtual to physical mapping */
 
-    pde_t directory_entry = va >> page_tbl_off;
-    pte_t table_entry = va & ((1 << page_off) - 1);
+    pde_t directory_entry = va >> page_tbl_off; // The directory entry 0 + entry
+    pte_t table_entry = va & ((1 << page_off) - 1); // table entry mem[d_entry + entry] + tbl_off
 
-    // page directory has not been set yet
+    
+    // page table has not been set yet
     if (physical_memory[directory_start + directory_entry*sizeof(pde_t)] == -1)
     {
         pde_t page_idx = get_next_page(); // for the page table
@@ -188,16 +188,7 @@ int page_map(pde_t pgdir, unsigned long va, pte_t pa)
 
     pte_t pg_tbl;
     memcpy(&pg_tbl, &physical_memory[directory_start + directory_entry*sizeof(pde_t)], sizeof(pte_t));
-    if (physical_memory[pg_tbl + table_entry*sizeof(pte_t)] == -1)
-    {
-        memcpy(&physical_memory[pg_tbl + table_entry*sizeof(pte_t)], &pa, sizeof(pte_t));
-        // set all the page values to -1
-        for (int i = 0; i < PGSIZE; i++)
-        {
-            physical_memory[pa + i] = -1;
-        }
-    }
-
+    memcpy(&physical_memory[pg_tbl + table_entry*sizeof(pte_t)], &pa, sizeof(pte_t));
     return 0;
 }
 
@@ -207,6 +198,7 @@ and used by the benchmark
 */
 void *t_malloc(unsigned int num_bytes)
 {
+    pthread_mutex_lock(&mutex);
 
     /*
      * HINT: If the physical memory is not yet initialized, then allocate and initialize.
@@ -224,13 +216,13 @@ void *t_malloc(unsigned int num_bytes)
     if (physical_bitmap[0] == 0)
     {
         // Page directory has not been initialized first page is for the directory
-        physical_bitmap[0] = 1;
         directory_start = (pde_t)0; // page table starts at address 0 of the memory
 
         // set all the directory values to -1
         for (int i = 0; i < PGSIZE; i++)
         {
             physical_memory[directory_start + i] = -1;
+            physical_bitmap[directory_start + i] = 1;
         }
     }
 
@@ -240,24 +232,24 @@ void *t_malloc(unsigned int num_bytes)
      */
     int pages_needed = (num_bytes / PGSIZE) + 1;
     unsigned long virtual_address = get_next_avail(pages_needed);
-    if (virtual_address == -1)
-    {
-        perror("Ran out of memory");
-        exit(1);
+
+    for (int i = 0; i < pages_needed; i++){
+        unsigned long curr_add = virtual_address + i;
+        virtual_bitmap[curr_add] = 1;
     }
 
     for (int i = 0; i < pages_needed; i++)
     {
         unsigned long curr_add = virtual_address + i; // next pages are just increments
-        virtual_bitmap[curr_add] = 1;
 
         pte_t val_idx = get_next_page();
-        for (int i = 0; i < PGSIZE; i++){
+        for (int j = 0; j < PGSIZE; j++){
             physical_bitmap[val_idx] = 1;
+            physical_memory[val_idx + j] = -1;
         }
         page_map(directory_start, curr_add, val_idx);
     }
-
+    pthread_mutex_unlock(&mutex);
     return (void *)(virtual_address << page_off);
 }
 
@@ -268,6 +260,7 @@ void *t_malloc(unsigned int num_bytes)
  */
 int put_value(void *va, void *val, int size)
 {
+    pthread_mutex_lock(&mutex);
 
     /* HINT: Using the virtual address and translate(), find the physical page. Copy
      * the contents of "val" to a physical page. NOTE: The "size" value can be larger
@@ -305,7 +298,7 @@ int put_value(void *va, void *val, int size)
             size -= PGSIZE;
         }
     }
-
+    pthread_mutex_unlock(&mutex);
     return 0; // Successful data copy
 }
 
@@ -313,10 +306,18 @@ int put_value(void *va, void *val, int size)
 @Author - Advith*/
 void get_value(void *va, void *val, int size)
 {
-
+    pthread_mutex_lock(&mutex);
     /* HINT: put the values pointed to by "va" inside the physical memory at given
      * "val" address. Assume you can access "val" directly by derefencing them.
      */
+
+    // Check if the virtual address is valid
+    if (va == NULL)
+    {
+        perror("Invalid virtual address");
+        exit(1);
+    }
+
     // Calculate the number of pages needed to store the data
     int pages = (size / PGSIZE) + 1;
 
@@ -341,6 +342,7 @@ void get_value(void *va, void *val, int size)
             size -= PGSIZE;
         }
     }
+    pthread_mutex_unlock(&mutex);
 }
 
 /* Responsible for releasing one or more memory pages using virtual address (va)
@@ -348,7 +350,7 @@ void get_value(void *va, void *val, int size)
 */
 void t_free(void *va, int size)
 {
-
+    pthread_mutex_lock(&mutex);
     /* Part 1: Free the page table entries starting from this virtual address
      * (va). Also mark the pages free in the bitmap. Perform free only if the
      * memory from "va" to va+size is valid.
@@ -368,6 +370,7 @@ void t_free(void *va, int size)
         }
     }
     virtual_bitmap[va_bitmap_add] = 0;
+    pthread_mutex_unlock(&mutex);
 }
 
 /*
