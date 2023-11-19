@@ -21,12 +21,27 @@ char *virtual_bitmap;
 char *physical_memory;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// Global TLB variables
+tlb TLB; 
+TLB_misses = 0;
+TLB_hits = 0;
+
 /*
 Function responsible for allocating and setting your physical memory
 @Author - Advith
 */
 void set_physical_mem()
 {
+
+
+    //Initialize the dirct mapped tlb when initializing page tables
+    for (int i = 0; i < TLB_ENTRIES; i++) 
+    {
+        TLB.tlb_entries[i].physical_page = NULL; //no mapping when the entries are empty
+        TLB.tlb_entries[i].virtual_page = 0;
+        TLB.tlb_entries[i].valid = false;
+    }
+
     // Allocate physical memory using mmap or malloc; this is the total size of
     // your memory you are simulating
     physical_memory = (char *)malloc(sizeof(char) * MEMSIZE);
@@ -410,37 +425,84 @@ void mat_mult(void *mat1, void *mat2, int size, void *answer) {
 /*
  * Part 2: Add a virtual to physical page translation to the TLB.
  * Feel free to extend the function arguments or return type.
+ * @Author - Taj
  */
 int add_TLB(void *va, void *pa)
 {
 
     /*Part 2 HINT: Add a virtual to physical page translation to the TLB */
 
-    return -1;
+    // Need to first check if the TLB already has an entry in the cache
+    for(int i = 0; i < TLB_ENTRIES; i++) 
+    {
+        if(TLB.tlb_entries[i].virtual_page == va) 
+        {
+            //set the physical # and return
+            TLB.tlb_entries[i].physical_page = pa;
+            TLB.tlb_entries[i].valid = true; // remember to set this for later reference **
+            return -1; 
+        }
+    }
+
+    //If page is not in TLB --> add new translation at the next available entry
+    for(int i = 0; i < TLB_ENTRIES; i++) 
+    {
+        //look for a tlb entry not in use
+        if(TLB.tlb_entries[i].valid == false) 
+        {
+            //Add new TLB translation
+            TLB.tlb_entries[i].virtual_page = va;
+            TLB.tlb_entries[i].virtual_page = pa;
+            TLB.tlb_entries[i].valid = true;
+            return 1;
+        }
+    }
+
+
+    //if all entries are valid and their virtual_page does not match
+    //method --> evict the oldest entry for the new one
+    TLB.tlb_entries[0].virtual_page = va;
+    TLB.tlb_entries[0].physical_page = pa;
+    TLB.tlb_entries[0].valid = true;
+    return 1;
 }
 
 /*
  * Part 2: Check TLB for a valid translation.
  * Returns the physical page address.
  * Feel free to extend this function and change the return type.
+ * @Author - Taj
  */
 pte_t *check_TLB(void *va)
 {
 
     /* Part 2: TLB lookup code here */
 
+    for(int i = 0; i < TLB_ENTRIES; i++) 
+    {
+        if(TLB.tlb_entries[i].valid && (TLB.tlb_entries[i].virtual_page == va) ) 
+        {
+
+            pte_t foundTable = (unsigned long) TLB.tlb_entries[i].physical_page; //return the physical page address
+            return foundTable;
+
+        }
+    }
+
     /*This function should return a pte_t pointer*/
+    return NULL;
 }
 
 /*
  * Part 2: Print TLB miss rate.
  * Feel free to extend the function arguments or return type.
+ * @Author - Taj
  */
 void print_TLB_missrate()
 {
-    double miss_rate = 0;
-
+    
     /*Part 2 Code here to calculate and print the TLB miss rate*/
-
+    double miss_rate = 0;
+    miss_rate = TLB_misses / (TLB_hits + TLB_misses);
     fprintf(stderr, "TLB miss rate %lf \n", miss_rate);
 }
