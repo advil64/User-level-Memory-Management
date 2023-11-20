@@ -23,8 +23,8 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Global TLB variables
 tlb TLB; 
-TLB_misses = 0;
-TLB_hits = 0;
+double TLB_misses = 0;
+double TLB_hits = 0;
 
 /*
 Function responsible for allocating and setting your physical memory
@@ -95,6 +95,21 @@ pte_t translate(pde_t pgdir, void *va)
      * directory index and page table index get the physical address.
      */
 
+    // Part 2 HINT: Check the TLB before performing the translation. If
+    // translation exists, then you can return physical address from the TLB.
+
+    //check tlb cache for a translation
+    void *TLBCheck = check_TLB(va);
+    if(TLBCheck != NULL) 
+    {
+        //TLB HIT
+        TLB_hits += 1;
+        return (pte_t) TLBCheck;
+    }
+
+    //else if the translation does not exist check the page table - TLB MISS
+    TLB_misses += 1;
+
     unsigned long curr_add = (unsigned long)va;
 
     pde_t directory_entry = (int)((curr_add >> (page_tbl_off+page_off)));
@@ -121,11 +136,14 @@ pte_t translate(pde_t pgdir, void *va)
         return -1;
     }
 
+
+    //add the translation to TLB
+    add_TLB(va, (void*) (page + page_entry));
+
     // return physical address
     return page + page_entry;
 
-    // Part 2 HINT: Check the TLB before performing the translation. If
-    // translation exists, then you can return physical address from the TLB.
+    
 }
 
 /*Function that gets the next available virtual address
@@ -199,6 +217,9 @@ int page_map(pde_t pgdir, unsigned long va, pte_t pa)
             physical_memory[page_idx + i] = -1;
             physical_bitmap[page_idx + i] = 1;
         }
+
+        // after you add a new page table translation entry, also add a translation to the TLB by implementing add_TLB()
+        add_TLB((void*) va, (void *) page_idx);
     }
 
     pte_t pg_tbl;
@@ -435,10 +456,10 @@ int add_TLB(void *va, void *pa)
     // Need to first check if the TLB already has an entry in the cache
     for(int i = 0; i < TLB_ENTRIES; i++) 
     {
-        if(TLB.tlb_entries[i].virtual_page == va) 
+        if(TLB.tlb_entries[i].virtual_page == (unsigned int) va) 
         {
             //set the physical # and return
-            TLB.tlb_entries[i].physical_page = pa;
+            TLB.tlb_entries[i].physical_page = (unsigned int) pa;
             TLB.tlb_entries[i].valid = true; // remember to set this for later reference **
             return -1; 
         }
@@ -451,8 +472,8 @@ int add_TLB(void *va, void *pa)
         if(TLB.tlb_entries[i].valid == false) 
         {
             //Add new TLB translation
-            TLB.tlb_entries[i].virtual_page = va;
-            TLB.tlb_entries[i].virtual_page = pa;
+            TLB.tlb_entries[i].virtual_page = (unsigned int) va;
+            TLB.tlb_entries[i].virtual_page = (unsigned int) pa;
             TLB.tlb_entries[i].valid = true;
             return 1;
         }
@@ -461,8 +482,8 @@ int add_TLB(void *va, void *pa)
 
     //if all entries are valid and their virtual_page does not match
     //method --> evict the oldest entry for the new one
-    TLB.tlb_entries[0].virtual_page = va;
-    TLB.tlb_entries[0].physical_page = pa;
+    TLB.tlb_entries[0].virtual_page = (unsigned int) va;
+    TLB.tlb_entries[0].physical_page = (unsigned int) pa;
     TLB.tlb_entries[0].valid = true;
     return 1;
 }
@@ -480,11 +501,11 @@ pte_t *check_TLB(void *va)
 
     for(int i = 0; i < TLB_ENTRIES; i++) 
     {
-        if(TLB.tlb_entries[i].valid && (TLB.tlb_entries[i].virtual_page == va) ) 
+        if(TLB.tlb_entries[i].valid && (TLB.tlb_entries[i].virtual_page == (unsigned int) va) ) 
         {
 
-            pte_t foundTable = (unsigned long) TLB.tlb_entries[i].physical_page; //return the physical page address
-            return foundTable;
+            unsigned int *foundTable = &TLB.tlb_entries[i].physical_page; //return the physical page address
+            return (pte_t *) foundTable;
 
         }
     }
