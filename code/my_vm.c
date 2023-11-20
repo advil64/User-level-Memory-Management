@@ -149,8 +149,7 @@ pte_t translate(pde_t pgdir, void *va)
     // return physical address
     return page + page_entry;
 
-    // Part 2 HINT: Check the TLB before performing the translation. If
-    // translation exists, then you can return physical address from the TLB.
+    
 }
 
 /*Function that gets the next available virtual address
@@ -461,6 +460,7 @@ void mat_mult(void *mat1, void *mat2, int size, void *answer)
 /*
  * Part 2: Add a virtual to physical page translation to the TLB.
  * Feel free to extend the function arguments or return type.
+ * @Author - Taj
  */
 int add_TLB(void *va, void *pa)
 {
@@ -502,6 +502,7 @@ int add_TLB(void *va, void *pa)
  * Part 2: Check TLB for a valid translation.
  * Returns the physical page address.
  * Feel free to extend this function and change the return type.
+ * @Author - Taj
  */
 pte_t *check_TLB(void *va)
 {
@@ -529,6 +530,17 @@ pte_t *check_TLB(void *va)
     }
     */
 
+    for(int i = 0; i < TLB_ENTRIES; i++) 
+    {
+        if(TLB.tlb_entries[i].valid && (TLB.tlb_entries[i].virtual_page == (unsigned int) va) ) 
+        {
+
+            unsigned int *foundTable = &TLB.tlb_entries[i].physical_page; //return the physical page address
+            return (pte_t *) foundTable;
+
+        }
+    }
+
     /*This function should return a pte_t pointer*/
     return NULL;
 }
@@ -536,6 +548,7 @@ pte_t *check_TLB(void *va)
 /*
  * Part 2: Print TLB miss rate.
  * Feel free to extend the function arguments or return type.
+ * @Author - Taj
  */
 void print_TLB_missrate()
 {
