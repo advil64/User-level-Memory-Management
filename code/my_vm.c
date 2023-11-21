@@ -110,12 +110,10 @@ pte_t translate(pde_t pgdir, void *va)
     void *TLBCheck = check_TLB(va);
     if (TLBCheck != NULL)
     {
-        // TLB HIT
         TLB_hits += 1;
         return (pte_t)TLBCheck;
     }
-
-    // else if the translation does not exist check the page table - TLB MISS
+    
     TLB_misses += 1;
 
     unsigned long curr_add = (unsigned long)va;
@@ -148,8 +146,6 @@ pte_t translate(pde_t pgdir, void *va)
     add_TLB(va, (void *)(page + page_entry));
     // return physical address
     return page + page_entry;
-
-    
 }
 
 /*Function that gets the next available virtual address
@@ -472,30 +468,6 @@ int add_TLB(void *va, void *pa)
     tlb_entries[entry].physical_page = (unsigned long)pa;
     tlb_entries[entry].valid = true;
     return 1;
-
-    // If page is not in TLB --> add new translation at the next available entry
-    /*
-    for(int i = 0; i < TLB_ENTRIES; i++)
-    {
-        //look for a tlb entry not in use
-        if(tlb_entries[i].valid == false)
-        {
-            //Add new TLB translation
-            tlb_entries[i].virtual_page = (unsigned long) va;
-            tlb_entries[i].physical_page = (unsigned long) pa;
-            tlb_entries[i].valid = true;
-            return 1;
-        }
-    }
-
-
-    //if all entries are valid and their virtual_page does not match
-    //method --> evict the oldest entry for the new one
-    tlb_entries[0].virtual_page = (unsigned long) va;
-    tlb_entries[0].physical_page = (unsigned long) pa;
-    tlb_entries[0].valid = true;
-    return 1;
-    */
 }
 
 /*
@@ -512,33 +484,8 @@ pte_t *check_TLB(void *va)
 
     if (tlb_entries[entry].valid && (tlb_entries[entry].virtual_page == (unsigned long)va))
     {
-
         pte_t foundTable = tlb_entries[entry].physical_page; // return the physical page address
         return (pte_t *)foundTable;
-    }
-
-    /*
-    for(int i = 0; i < TLB_ENTRIES; i++)
-    {
-        if(tlb_entries[i].valid && (tlb_entries[i].virtual_page == (unsigned long) va) )
-        {
-
-            pte_t foundTable = tlb_entries[i].physical_page; //return the physical page address
-            return (pte_t *)foundTable;
-
-        }
-    }
-    */
-
-    for(int i = 0; i < TLB_ENTRIES; i++) 
-    {
-        if(TLB.tlb_entries[i].valid && (TLB.tlb_entries[i].virtual_page == (unsigned int) va) ) 
-        {
-
-            unsigned int *foundTable = &TLB.tlb_entries[i].physical_page; //return the physical page address
-            return (pte_t *) foundTable;
-
-        }
     }
 
     /*This function should return a pte_t pointer*/
@@ -552,7 +499,6 @@ pte_t *check_TLB(void *va)
  */
 void print_TLB_missrate()
 {
-
     /*Part 2 Code here to calculate and print the TLB miss rate*/
     double miss_rate = 0;
     miss_rate = TLB_misses / (TLB_hits + TLB_misses);
